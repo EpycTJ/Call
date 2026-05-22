@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">WebRTCApp</string>
+    <string name="call">Call</string>
+    <string name="hangup">Hangup</string>
+    <string name="mic_on">Mic On</string>
+    <string name="mic_off">Mic Off</string>
+    <string name="switch_camera">Camera</string>
+</resources>

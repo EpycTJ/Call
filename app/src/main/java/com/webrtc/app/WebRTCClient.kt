@@ -63,13 +63,17 @@ class WebRTCClient(private val context: Context, private val eglBaseContext: Egl
             videoCapturer = createCameraCapturer(Camera1Enumerator(true))
         }
 
-        val surfaceTextureHelper = SurfaceTextureHelper.create("CaptureThread", eglBaseContext)
-        val videoSource = peerConnectionFactory.createVideoSource(videoCapturer?.isScreencast == true)
-        videoCapturer?.initialize(surfaceTextureHelper, context, videoSource.capturerObserver)
-        videoCapturer?.startCapture(1280, 720, 30) // HD format for quality
+        if (videoCapturer != null) {
+            val surfaceTextureHelper = SurfaceTextureHelper.create("CaptureThread", eglBaseContext)
+            val videoSource = peerConnectionFactory.createVideoSource(videoCapturer?.isScreencast == true)
+            videoCapturer?.initialize(surfaceTextureHelper, context, videoSource.capturerObserver)
+            videoCapturer?.startCapture(1280, 720, 30) // HD format for quality
 
-        localVideoTrack = peerConnectionFactory.createVideoTrack(VIDEO_TRACK_ID, videoSource)
-        localView?.let { localVideoTrack?.addSink(it) }
+            localVideoTrack = peerConnectionFactory.createVideoTrack(VIDEO_TRACK_ID, videoSource)
+            localView?.let { localVideoTrack?.addSink(it) }
+        } else {
+            Log.w(TAG, "No camera found, proceeding with audio only")
+        }
 
         val audioSource = peerConnectionFactory.createAudioSource(createAudioConstraints())
         localAudioTrack = peerConnectionFactory.createAudioTrack(AUDIO_TRACK_ID, audioSource)
@@ -189,12 +193,8 @@ class WebRTCClient(private val context: Context, private val eglBaseContext: Egl
         })
 
         // Add local stream
-        if (localVideoTrack != null && localAudioTrack != null) {
-            val stream = peerConnectionFactory.createLocalMediaStream("ARDAMS")
-            stream.addTrack(localVideoTrack)
-            stream.addTrack(localAudioTrack)
-            peerConnection?.addStream(stream)
-        }
+        localVideoTrack?.let { peerConnection?.addTrack(it, listOf("ARDAMS")) }
+        localAudioTrack?.let { peerConnection?.addTrack(it, listOf("ARDAMS")) }
     }
 
     fun setRemoteDescription(sdp: SessionDescription) {

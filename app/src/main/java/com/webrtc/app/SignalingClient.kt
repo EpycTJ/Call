@@ -8,7 +8,7 @@ import org.json.JSONObject
 import java.net.URI
 import java.net.URISyntaxException
 
-class SignalingClient(private val url: String, private val callback: Callback) {
+class SignalingClient(private val url: String, private val clientId: String, private val callback: Callback) {
     private var webSocket: WebSocketClient? = null
 
     interface Callback {
@@ -28,6 +28,9 @@ class SignalingClient(private val url: String, private val callback: Callback) {
                 override fun onMessage(message: String) {
                     try {
                         val jsonMessage = JSONObject(message)
+                        if (jsonMessage.has("clientId") && jsonMessage.getString("clientId") == clientId) {
+                            return // Ignore our own messages
+                        }
                         when (jsonMessage.getString("type")) {
                             "offer" -> callback.onOfferReceived(jsonMessage)
                             "answer" -> callback.onAnswerReceived(jsonMessage)
@@ -52,18 +55,20 @@ class SignalingClient(private val url: String, private val callback: Callback) {
         }
     }
 
-    fun sendOffer(sdp: String) {
-        sendMessage(createJsonMessage("offer", sdp))
+    fun sendOffer(sdp: String, roomId: String) {
+        sendMessage(createJsonMessage("offer", sdp, roomId))
     }
 
-    fun sendAnswer(sdp: String) {
-        sendMessage(createJsonMessage("answer", sdp))
+    fun sendAnswer(sdp: String, roomId: String) {
+        sendMessage(createJsonMessage("answer", sdp, roomId))
     }
 
-    fun sendIceCandidate(sdpMid: String, sdpMLineIndex: Int, sdp: String) {
+    fun sendIceCandidate(sdpMid: String, sdpMLineIndex: Int, sdp: String, roomId: String) {
         try {
             val message = JSONObject()
             message.put("type", "candidate")
+            message.put("roomId", roomId)
+            message.put("clientId", clientId)
             message.put("sdpMid", sdpMid)
             message.put("sdpMLineIndex", sdpMLineIndex)
             message.put("candidate", sdp)
@@ -73,10 +78,12 @@ class SignalingClient(private val url: String, private val callback: Callback) {
         }
     }
 
-    private fun createJsonMessage(type: String, sdp: String): JSONObject {
+    private fun createJsonMessage(type: String, sdp: String, roomId: String): JSONObject {
         val message = JSONObject()
         try {
             message.put("type", type)
+            message.put("roomId", roomId)
+            message.put("clientId", clientId)
             message.put("sdp", sdp)
         } catch (e: JSONException) {
             Log.e(TAG, "Error creating message", e)

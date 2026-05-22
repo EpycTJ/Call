@@ -5,6 +5,8 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
 import android.widget.Button
+import android.widget.EditText
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -26,9 +28,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnCall: Button
     private lateinit var btnMic: Button
     private lateinit var btnCamera: Button
+    private lateinit var etRoomId: EditText
 
     private var isMuted = false
     private var isCalling = false
+    private val clientId = java.util.UUID.randomUUID().toString()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,6 +43,7 @@ class MainActivity : AppCompatActivity() {
         btnCall = findViewById(R.id.btn_call)
         btnMic = findViewById(R.id.btn_mic)
         btnCamera = findViewById(R.id.btn_camera)
+        etRoomId = findViewById(R.id.et_room_id)
 
         rootEglBase = EglBase.create()
 
@@ -93,10 +98,13 @@ class MainActivity : AppCompatActivity() {
         webRTCClient = rootEglBase?.let { WebRTCClient(applicationContext, it.eglBaseContext) }
         webRTCClient?.initViews(localView, remoteView)
 
-        signalingClient = SignalingClient(SIGNALING_URL, object : SignalingClient.Callback {
+        signalingClient = SignalingClient(SIGNALING_URL, clientId, object : SignalingClient.Callback {
             override fun onOfferReceived(data: JSONObject) {
                 runOnUiThread {
                     try {
+                        val incomingRoomId = data.optString("roomId")
+                        if (incomingRoomId != etRoomId.text.toString()) return@runOnUiThread
+
                         val sdp = data.getString("sdp")
                         webRTCClient?.setRemoteDescription(SessionDescription(SessionDescription.Type.OFFER, sdp))
                         webRTCClient?.answer()
@@ -110,6 +118,9 @@ class MainActivity : AppCompatActivity() {
             override fun onAnswerReceived(data: JSONObject) {
                 runOnUiThread {
                     try {
+                        val incomingRoomId = data.optString("roomId")
+                        if (incomingRoomId != etRoomId.text.toString()) return@runOnUiThread
+
                         val sdp = data.getString("sdp")
                         webRTCClient?.setRemoteDescription(SessionDescription(SessionDescription.Type.ANSWER, sdp))
                     } catch (e: JSONException) {
@@ -121,6 +132,9 @@ class MainActivity : AppCompatActivity() {
             override fun onIceCandidateReceived(data: JSONObject) {
                 runOnUiThread {
                     try {
+                        val incomingRoomId = data.optString("roomId")
+                        if (incomingRoomId != etRoomId.text.toString()) return@runOnUiThread
+
                         val candidate = IceCandidate(
                             data.getString("sdpMid"),
                             data.getInt("sdpMLineIndex"),
@@ -136,14 +150,20 @@ class MainActivity : AppCompatActivity() {
 
         webRTCClient?.setObserver(object : WebRTCClient.WebRTCObserver {
             override fun onIceCandidate(candidate: IceCandidate) {
-                signalingClient?.sendIceCandidate(candidate.sdpMid, candidate.sdpMLineIndex, candidate.sdp)
+                val currentRoom = etRoomId.text.toString()
+                if (currentRoom.isNotEmpty()) {
+                    signalingClient?.sendIceCandidate(candidate.sdpMid, candidate.sdpMLineIndex, candidate.sdp, currentRoom)
+                }
             }
 
             override fun onSessionDescription(sdp: SessionDescription) {
-                if (sdp.type == SessionDescription.Type.OFFER) {
-                    signalingClient?.sendOffer(sdp.description)
-                } else if (sdp.type == SessionDescription.Type.ANSWER) {
-                    signalingClient?.sendAnswer(sdp.description)
+                val currentRoom = etRoomId.text.toString()
+                if (currentRoom.isNotEmpty()) {
+                    if (sdp.type == SessionDescription.Type.OFFER) {
+                        signalingClient?.sendOffer(sdp.description, currentRoom)
+                    } else if (sdp.type == SessionDescription.Type.ANSWER) {
+                        signalingClient?.sendAnswer(sdp.description, currentRoom)
+                    }
                 }
             }
         })
@@ -154,6 +174,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun toggleCall() {
         if (!isCalling) {
+            val room = etRoomId.text.toString()
+            if (room.isEmpty()) {
+                Toast.makeText(this, "Please enter a Room ID", Toast.LENGTH_SHORT).show()
+                return
+            }
             webRTCClient?.call()
             updateCallButton(true)
         } else {
